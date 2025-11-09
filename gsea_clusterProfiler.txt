@@ -1,0 +1,119 @@
+
+# Install required packages (if you haven't already)
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("clusterProfiler")
+BiocManager::install("org.Hs.eg.db") # Example for human annotation
+BiocManager::install("enrichplot") # For visualization
+
+# Load the libraries
+library(clusterProfiler)
+library(org.Hs.eg.db) # Or the appropriate OrgDb for your organism
+library(enrichplot)
+
+# Example: Assuming the data frame 'df' has a 'log2FoldChange' column 
+# and a column of gene IDs (e.g., 'EntrezID')
+
+# 1. Extract the LFC vector
+original_gene_list <- df$log2FoldChange 
+
+# 2. Name the vector with gene IDs
+names(original_gene_list) <- df$EntrezID 
+
+# 3. Omit any NA values
+gene_list <- na.omit(original_gene_list)
+
+# 4. Sort the list in decreasing order (highest LFC first) - CRITICAL for GSEA
+gene_list <- sort(gene_list, decreasing = TRUE)
+
+# View the top of your ranked list
+head(gene_list)
+
+# A. GSEA for Gene Ontology (GO)
+---------------------------------
+gse_go_result <- gseGO(
+    geneList = gene_list,             # The ranked, named gene list
+    OrgDb = org.Hs.eg.db,            # Organism database (e.g., Human)
+    ont = "BP",                      # Ontology to use: "BP" (Biological Process), "MF" (Molecular Function), or "CC" (Cellular Component)
+    keyType = "ENTREZID",            # Type of gene ID used in the list
+    minGSSize = 10,                  # Minimum number of genes in a set
+    maxGSSize = 500,                 # Maximum number of genes in a set
+    pvalueCutoff = 0.05,             # Adjusted p-value cutoff
+    verbose = TRUE
+)
+
+# You can convert Entrez IDs to gene symbols for readability
+gse_go_result <- setReadable(gse_go_result, 'org.Hs.eg.db', 'ENTREZID')
+
+
+# B. GSEA for KEGG Pathways
+---------------------------
+
+# Convert gene IDs to KEGG format (if necessary, often Entrez ID works)
+# If your gene_list is already Entrez ID, you might not need the bitr step 
+# but KEGG analysis often works best with Entrez IDs.
+
+gse_kegg_result <- gseKEGG(
+    geneList = gene_list,             # The ranked, named gene list
+    organism = 'hsa',                # KEGG organism code (e.g., 'hsa' for Human)
+    keyType = 'ncbi-geneid',         # Type of gene ID in the list
+    minGSSize = 10,
+    maxGSSize = 500,
+    pvalueCutoff = 0.05,
+    verbose = TRUE
+)
+
+
+# Visualization: GSEA Plot
+
+# Plot the result for the most significantly enriched term
+gseaplot2(gse_go_result, 
+          geneSet = gse_go_result$ID[1], # Use the ID of the top term
+          title = gse_go_result$Description[1])
+
+# Ridge Plot
+
+ridgeplot(gse_go_result, showCategory = 10) + 
+    labs(x = "Log2 Fold Change Distribution")
+
+# Dot Plot
+
+dotplot(gse_go_result, showCategory = 10, split = ".sign") + 
+    facet_grid(.~.sign)
+
+## Entrez ID <--> Gene Symbol conversion
+
+# use the bitr() function from the clusterProfiler package
+
+# Example: Your initial list of genes (e.g., from a DESeq2/edgeR analysis)
+gene_symbols <- c("TP53", "KRAS", "EGFR", "MYC", "BCL2", "VEGFA")
+
+library(clusterProfiler)
+library(org.Hs.eg.db) # Use the appropriate OrgDb for your organism (e.g., Human)
+
+# Use the bitr function for conversion
+converted_ids <- bitr(
+    geneID = gene_symbols,            # Your input gene list (Gene Symbols)
+    fromType = "SYMBOL",              # The type of ID you are starting with
+    toType = "ENTREZID",              # The type of ID you want to convert to
+    OrgDb = org.Hs.eg.db              # The annotation database
+)
+
+# View the conversion result
+head(converted_ids)
+
+## For converting Ensembl IDs <--> Entrez IDs
+
+BiocManager::install("org.Mm.eg.db") # For mouse
+BiocManager::install("org.Rn.eg.db") # For rat
+
+Use bitr() for conversion
+mouse_conversion <- bitr(
+    geneID = mouse_ensembl_ids,
+    fromType = "ENSEMBL",        # The type you are converting FROM
+    toType = "ENTREZID",         # The type you are converting TO
+    OrgDb = org.Mm.eg.db         # The MOUSE annotation database
+)
+
+# View the result
+head(mouse_conversion)
